@@ -1,12 +1,12 @@
 import streamlit as st
 import pandas as pd
 
-# 1. 화면 기본 설정
+# 1. 화면 기본 설정 (넓은 화면 사용)
 st.set_page_config(page_title="선생님의 안전 나침반", layout="wide")
 st.title("🧭 선생님의 안전 나침반")
 st.subheader("데이터 융합을 통한 다방향 학교 안전사고 예측 대시보드")
 
-# 2. 통합 데이터 불러오기 (용량 문제로 zip 압축 파일을 직접 읽어오도록 수정)
+# 2. 통합 데이터 불러오기 (zip 파일 기준)
 @st.cache_data
 def load_data():
     return pd.read_csv('total_accident_data.zip', compression='zip')
@@ -19,12 +19,12 @@ school_level = st.sidebar.selectbox("학교급", df['학교급'].unique())
 time_category = st.sidebar.selectbox("사고시간", df['사고시간'].unique())
 location = st.sidebar.selectbox("사고장소", df['사고장소'].unique())
 
-# 4. 선택한 조건으로 데이터 싹 필터링하기
+# 4. 선택한 조건으로 데이터 필터링
 filtered_df = df[(df['학교급'] == school_level) & 
                  (df['사고시간'] == time_category) & 
                  (df['사고장소'] == location)]
 
-# 💡 사고형태별 맞춤형 조치 및 병원 안내 단어장 (전체 경우의 수 반영)
+# 💡 사고형태별 맞춤형 조치 및 병원 안내 단어장
 action_guide = {
     "움직이는 물체와의 부딪힘": "🧊 [초기 조치] 타박상 부위 붓기를 확인하고 즉시 냉찜질을 해주세요. 출혈 시 깨끗한 천으로 지혈하세요.\n🏥 [추천 병원] 뼈 통증 호소 시 인근 정형외과 내원",
     "고정된 물체와의 부딪힘": "⚠️ [초기 조치] 머리를 부딪힌 경우 구토나 어지럼증이 없는지 꼭 관찰해야 합니다.\n🏥 [추천 병원] 충격이 크거나 의식 저하 시 충남대학교병원 등 종합병원 응급실",
@@ -57,7 +57,7 @@ action_guide = {
     "그밖의 손상 사고": "❗ [초기 조치] 보건실에 즉시 연락하여 상황을 알리고 필요시 초기 상태를 사진으로 남겨두세요.\n🏥 [추천 병원] 증상과 부위에 따라 적절한 인근 병의원 내원"
 }
 
-# 5. 메인 화면에 결과 띄우기
+# 5. 메인 화면 - 기본 결과 띄우기
 st.markdown("---")
 st.write(f"**현재 상황:** {school_level} / {time_category} / {location}")
 st.write(f"과거 동일 조건 사고 기록: 총 {len(filtered_df)}건")
@@ -69,15 +69,40 @@ if len(filtered_df) > 0:
     st.markdown("### 🚨 가장 주의해야 할 사고 Top 3 및 대처 방안")
     for i, (accident, count) in enumerate(top_accidents.items(), 1):
         
-        # 단어장에서 사고 이름에 맞는 대처법 꺼내오기 (사전에 없으면 기본 멘트 출력)
         guide_text = action_guide.get(accident, "❗ 보건실에 즉시 연락하여 상황을 알리세요.")
         
         if i == 1:
             st.error(f"**1순위: {accident}** (발생 건수: {count}건)")
-            st.info(guide_text) # 파란색 박스로 대처법 띄우기
+            st.info(guide_text) 
         elif i == 2:
             st.warning(f"**2순위: {accident}** (발생 건수: {count}건)")
             st.info(guide_text)
         elif i == 3:
             st.success(f"**3순위: {accident}** (발생 건수: {count}건)")
             st.info(guide_text)
+            
+    # 6. 추가 기능: 심층 데이터 분석 시각화 (사고당시활동으로 변경됨)
+    st.markdown("---")
+    st.markdown("### 📊 [심층 분석] 해당 조건의 사고 특성 프로파일링")
+    st.caption("과거 데이터를 바탕으로 도출된 통계입니다. 안전 지도 및 예산 편성에 활용하십시오.")
+    
+    # 3개의 단을 나누어 차트 배치
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.markdown("**🧑‍🎓 가장 취약한 학년 Top 5**")
+        grade_counts = filtered_df['사고자학년'].dropna().value_counts().head(5)
+        st.bar_chart(grade_counts)
+        
+    with col2:
+        st.markdown("**🩹 주로 다치는 부위 Top 5**")
+        body_part_counts = filtered_df['사고부위'].dropna().value_counts().head(5)
+        st.bar_chart(body_part_counts)
+        
+    with col3:
+        st.markdown("**🏃‍♂️ 사고 당시 활동 Top 5**")
+        activity_counts = filtered_df['사고당시활동'].dropna().value_counts().head(5)
+        st.bar_chart(activity_counts)
+
+else:
+    st.info("선택하신 조건에 해당하는 과거 사고 기록이 없습니다.")
