@@ -1,10 +1,15 @@
 import streamlit as st
 import pandas as pd
+import altair as alt
 
 # 1. 화면 기본 설정 (넓은 화면 사용)
 st.set_page_config(page_title="선생님의 안전 나침반", layout="wide")
 st.title("🧭 선생님의 안전 나침반")
 st.subheader("데이터 융합을 통한 다방향 학교 안전사고 예측 대시보드")
+
+# [추가] 게시판 데이터를 임시 저장할 세션 상태 초기화 (프로토타입용)
+if 'board_data' not in st.session_state:
+    st.session_state.board_data = []
 
 # 2. 통합 데이터 불러오기 (zip 파일 기준)
 @st.cache_data
@@ -13,11 +18,37 @@ def load_data():
 
 df = load_data()
 
-# 3. 왼쪽 사이드바 (조건 입력 칸)
+# 3. 왼쪽 사이드바 (조건 입력 및 게시판 폼)
 st.sidebar.header("상황을 선택해주세요 👇")
 school_level = st.sidebar.selectbox("학교급", df['학교급'].unique())
 time_category = st.sidebar.selectbox("사고시간", df['사고시간'].unique())
 location = st.sidebar.selectbox("사고장소", df['사고장소'].unique())
+
+st.sidebar.markdown("---")
+
+# [추가] 위험 시설물 신고 폼 (사이드바 하단)
+st.sidebar.header("🛠️ 위험 시설물 신고")
+st.sidebar.caption("발견하신 위험 요소를 행정실로 즉시 전달합니다.")
+with st.sidebar.form("report_form", clear_on_submit=True):
+    uploaded_photo = st.file_uploader("현장 사진 업로드", type=['png', 'jpg', 'jpeg'])
+    danger_opinion = st.text_area("어떤 점이 위험한가요?", placeholder="예: 체육관 입구 바닥 타일이 깨져서 학생들이 걸려 넘어질 위험이 있습니다.")
+    
+    submitted = st.form_submit_button("신고 등록")
+    
+    if submitted:
+        if not danger_opinion.strip():
+            st.sidebar.error("위험 요소에 대한 의견을 작성해주세요.")
+        else:
+            # 새로운 신고 내역을 세션에 추가
+            new_report = {
+                "id": len(st.session_state.board_data) + 1,
+                "photo": uploaded_photo,
+                "opinion": danger_opinion,
+                "status": "등록", # 기본 상태
+                "feedback": ""    # 행정실 피드백 초기값
+            }
+            st.session_state.board_data.append(new_report)
+            st.sidebar.success("성공적으로 접수되었습니다.")
 
 # 4. 선택한 조건으로 데이터 필터링
 filtered_df = df[(df['학교급'] == school_level) & 
@@ -63,7 +94,6 @@ st.write(f"**현재 상황:** {school_level} / {time_category} / {location}")
 st.write(f"과거 동일 조건 사고 기록: 총 {len(filtered_df)}건")
 
 if len(filtered_df) > 0:
-    # 사고형태 1~3위 계산
     top_accidents = filtered_df['사고형태'].value_counts().head(3)
     
     st.markdown("### 🚨 가장 주의해야 할 사고 Top 3 및 대처 방안")
@@ -81,28 +111,97 @@ if len(filtered_df) > 0:
             st.success(f"**3순위: {accident}** (발생 건수: {count}건)")
             st.info(guide_text)
             
-    # 6. 추가 기능: 심층 데이터 분석 시각화 (사고당시활동으로 변경됨)
+    # 6. 심층 데이터 분석 시각화
     st.markdown("---")
     st.markdown("### 📊 [심층 분석] 해당 조건의 사고 특성 프로파일링")
     st.caption("과거 데이터를 바탕으로 도출된 통계입니다. 안전 지도 및 예산 편성에 활용하십시오.")
     
-    # 3개의 단을 나누어 차트 배치
     col1, col2, col3 = st.columns(3)
     
     with col1:
         st.markdown("**🧑‍🎓 가장 취약한 학년 Top 5**")
-        grade_counts = filtered_df['사고자학년'].dropna().value_counts().head(5)
-        st.bar_chart(grade_counts)
+        df1 = filtered_df['사고자학년'].dropna().value_counts().head(5).reset_index()
+        df1.columns = ['항목', '건수']
+        chart1 = alt.Chart(df1).mark_bar().encode(
+            x=alt.X('건수:Q', title=None),
+            y=alt.Y('항목:N', sort='-x', title=None) 
+        )
+        st.altair_chart(chart1, use_container_width=True)
         
     with col2:
         st.markdown("**🩹 주로 다치는 부위 Top 5**")
-        body_part_counts = filtered_df['사고부위'].dropna().value_counts().head(5)
-        st.bar_chart(body_part_counts)
+        df2 = filtered_df['사고부위'].dropna().value_counts().head(5).reset_index()
+        df2.columns = ['항목', '건수']
+        chart2 = alt.Chart(df2).mark_bar().encode(
+            x=alt.X('건수:Q', title=None),
+            y=alt.Y('항목:N', sort='-x', title=None)
+        )
+        st.altair_chart(chart2, use_container_width=True)
         
     with col3:
         st.markdown("**🏃‍♂️ 사고 당시 활동 Top 5**")
-        activity_counts = filtered_df['사고당시활동'].dropna().value_counts().head(5)
-        st.bar_chart(activity_counts)
+        df3 = filtered_df['사고당시활동'].dropna().value_counts().head(5).reset_index()
+        df3.columns = ['항목', '건수']
+        chart3 = alt.Chart(df3).mark_bar().encode(
+            x=alt.X('건수:Q', title=None),
+            y=alt.Y('항목:N', sort='-x', title=None)
+        )
+        st.altair_chart(chart3, use_container_width=True)
 
 else:
     st.info("선택하신 조건에 해당하는 과거 사고 기록이 없습니다.")
+
+# 7. [추가] 위험 시설물 신고 게시판 현황
+st.markdown("---")
+st.markdown("### 📢 위험 시설물 신고 및 조치 현황 게시판")
+st.caption("현장에서 접수된 위험 요소와 행정실의 처리 진행 상태를 실시간으로 공유합니다.")
+
+if not st.session_state.board_data:
+    st.info("현재 접수된 신고 건이 없습니다.")
+else:
+    # 게시판 내역 출력 (최신 신고가 위로 오게 역순 정렬)
+    for report in reversed(st.session_state.board_data):
+        with st.container():
+            col_img, col_desc = st.columns([1, 3])
+            
+            # 사진 출력 (첨부된 경우)
+            with col_img:
+                if report['photo'] is not None:
+                    st.image(report['photo'], use_column_width=True)
+                else:
+                    st.write("📷 첨부 사진 없음")
+            
+            # 신고 내용 및 상태 라벨
+            with col_desc:
+                st.markdown(f"**📌 신고 내용 (No.{report['id']})**")
+                st.write(report['opinion'])
+                
+                # 상태에 따라 뱃지 색상 다르게 표시
+                if report['status'] == "등록":
+                    st.markdown("🔹 **상태:** `등록 (대기중)`")
+                elif report['status'] == "진행중":
+                    st.markdown("🏃‍♂️ **상태:** `조치 진행중`")
+                elif report['status'] == "완료":
+                    st.markdown("✅ **상태:** `조치 완료`")
+                
+                # 피드백 내용 표시
+                if report['feedback']:
+                    st.success(f"**행정실 피드백:** {report['feedback']}")
+                else:
+                    st.warning("아직 행정실 피드백이 등록되지 않았습니다.")
+                
+                # [관리자(행정실)용 피드백 입력 폼]
+                with st.expander("🛠️ 행정실 상태 업데이트 (관리자 전용)"):
+                    new_status = st.radio("진행 상태 변경", ["등록", "진행중", "완료"], 
+                                          index=["등록", "진행중", "완료"].index(report['status']), 
+                                          key=f"status_{report['id']}")
+                    new_feedback = st.text_area("피드백 작성", value=report['feedback'], key=f"fb_{report['id']}")
+                    
+                    if st.button("수정 내용 저장", key=f"btn_{report['id']}"):
+                        # 세션 내 해당 데이터 업데이트
+                        for item in st.session_state.board_data:
+                            if item['id'] == report['id']:
+                                item['status'] = new_status
+                                item['feedback'] = new_feedback
+                        st.rerun() # 수정 후 화면 즉시 새로고침
+        st.markdown("---")
